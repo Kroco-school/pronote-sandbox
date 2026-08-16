@@ -6,6 +6,7 @@ const db = new sqlite3.Database('database.db', (err) => {
         console.log('Connected to the "session" database.');
     }
 });
+db.configure('busyTimeout', 5000); // attend le verrou SQLite au lieu de crasher (SQLITE_BUSY)
 const SESSION_DURATION = 10 * 60 * 1000; // 10 minutes
 
 // Fonction pour créer la table "sessions"

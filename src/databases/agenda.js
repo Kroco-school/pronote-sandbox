@@ -7,6 +7,7 @@ const db = new sqlite3.Database('database.db', (err) => {
         console.log('Connected to the database (agenda initialization).');
     }
 });
+db.configure('busyTimeout', 5000); // attend le verrou SQLite au lieu de crasher (SQLITE_BUSY)
 
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS agenda_events (

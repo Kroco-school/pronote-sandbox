@@ -8,6 +8,7 @@ const db = new sqlite3.Database('database.db', (err) => {
         console.log('Connected to the database (evaluations initialization).');
     }
 });
+db.configure('busyTimeout', 5000); // attend le verrou SQLite au lieu de crasher (SQLITE_BUSY)
 
 db.serialize(async () => {
     const table = `CREATE TABLE IF NOT EXISTS evaluations (

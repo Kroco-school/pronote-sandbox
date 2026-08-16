@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 
 const dbPath = process.env.FOSSNOTE_DATABASE_PATH || path.join(__dirname, '..', 'database.db');
 const db = new sqlite3.Database(dbPath);
+db.configure('busyTimeout', 5000); // attend le verrou SQLite au lieu de crasher (SQLITE_BUSY)
 
 function run(sql, params = []) {
     return new Promise((resolve, reject) => {

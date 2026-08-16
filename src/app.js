@@ -2,6 +2,17 @@ const express = require('express');
 const app = express();
 const fs = require("fs");
 
+// Résilience du bac à sable : une requête malformée, une erreur SQLite « database is
+// locked » (plusieurs connexions ouvrent le même fichier) ou une promesse rejetée ne doit
+// PAS tuer tout le serveur — l'app perdait alors l'accès à Pronote jusqu'au redémarrage du
+// conteneur. On journalise et on continue de servir.
+process.on('uncaughtException', (err) => {
+    console.error('[fossnote] uncaughtException (serveur maintenu en vie):', err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[fossnote] unhandledRejection (serveur maintenu en vie):', reason);
+});
+
 const session = require("./databases/session");
 const eleves = require("./databases/eleves");
 const teachers = require("./databases/teachers");
@@ -56,6 +67,15 @@ const appelFonctionRoute = require('./routes/fossnote/api/appelfonction');
 // Définir les routes de l'api
 app.use('/fossnote/appeldeconnexion', appelDeConnexionRoute);
 app.use('/fossnote/appelfonction', appelFonctionRoute);
+
+// Filet de sécurité Express : une erreur remontée d'une route renvoie 500 au lieu de
+// laisser l'exception se propager (et, sans ce middleware, potentiellement tuer le process).
+app.use((err, req, res, next) => {
+    console.error('[fossnote] erreur de route:', err);
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'internal' });
+    }
+});
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000');
