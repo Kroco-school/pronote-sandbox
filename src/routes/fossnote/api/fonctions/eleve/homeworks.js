@@ -8,10 +8,49 @@ const {
     getHomeworksByClass
 } = require('../../../../../databases/homeworks');
 
+/// PRONOTE decrit une piece jointe par `{ G, L, N, url }`, ou **`G: 0` = lien** et
+/// **`G: 1` = fichier heberge**. La distinction n'est pas cosmetique : pour un fichier, un
+/// client conforme ignore `url` et reconstruit une adresse chiffree
+/// `/FichiersExternes/<blob>/<nom>` a partir de `N` et de la cle de session — que ce bac a
+/// sable ne sert pas. Une piece jointe annoncee `G: 1` etait donc intelechargeable par un
+/// vrai client, alors meme qu'un `url` valide voyageait a cote. Le bac a sable sert de vrais
+/// fichiers par URL directe : ce sont des LIENS, `G: 0`.
+///
+/// Le chemin stocke en base est relatif, on le rend absolu avec l'hote de la requete
+/// courante pour que le lien reste joignable quelle que soit la facon dont le client a
+/// atteint le bac a sable.
+function buildAttachments(homework, baseUrl) {
+    if (!homework.attachments) {
+        return [];
+    }
+
+    let entries;
+    try {
+        entries = JSON.parse(homework.attachments);
+    } catch (err) {
+        console.error('Pieces jointes illisibles pour le devoir', homework.id, err.message);
+        return [];
+    }
+
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    return entries
+        .filter((entry) => entry && entry.name && entry.path)
+        .map((entry, index) => ({
+            "G": 0,
+            "L": entry.name,
+            "N": "1900" + homework.id + index,
+            "url": baseUrl + entry.path
+        }));
+}
+
 async function bind(req, res, currentSession) {
     const {
         session_id
     } = req.params;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     const challengeInfos = JSON.parse(currentSession.challenge);
 
@@ -49,7 +88,7 @@ async function bind(req, res, currentSession) {
                     },
                     "ListePieceJointe": {
                         "_T": 24,
-                        "V": []
+                        "V": buildAttachments(homework, baseUrl)
                     },
                     "ListeThemes": {
                         "_T": 24,

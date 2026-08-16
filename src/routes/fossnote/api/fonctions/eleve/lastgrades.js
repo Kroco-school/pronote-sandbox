@@ -9,6 +9,37 @@ const {
     getCurrentPeriod
 } = require('../../../../../helpers');
 
+/// PRONOTE ecrit « ?? » quand l'etablissement ne publie pas une valeur : c'est ce que le
+/// client attend, et non une chaine vide ou un zero, qui passeraient pour de vraies notes.
+const NON_PUBLIE = "??";
+
+function numbers(values) {
+    return values
+        .map(value => Number.parseFloat(String(value ?? "").replace(",", ".")))
+        .filter(value => Number.isFinite(value));
+}
+
+function average(values) {
+    const parsed = numbers(values);
+    if (parsed.length === 0) {
+        return NON_PUBLIE;
+    }
+    const sum = parsed.reduce((total, value) => total + value, 0);
+    return (sum / parsed.length).toFixed(2);
+}
+
+function extremum(values, pick) {
+    const parsed = numbers(values);
+    return parsed.length === 0 ? NON_PUBLIE : pick(...parsed).toFixed(2);
+}
+
+/// Une valeur de classe absente reste absente : le bac a sable imite ici un etablissement
+/// qui ne publie pas tout, pour que le client sache traiter les deux cas.
+function publishedOrPlaceholder(value) {
+    const parsed = numbers([value]);
+    return parsed.length === 0 ? NON_PUBLIE : parsed[0].toFixed(2);
+}
+
 async function bind(req, res, currentSession) {
     const {
         session_id
@@ -34,7 +65,9 @@ async function bind(req, res, currentSession) {
             services[grade.subject] = ordre;
             ordre++;
         }
-    
+
+        const subjectNotes = notes.filter(item => item.subject === grade.subject);
+
         return {
             "G": 12,
             "L": grade.subject,
@@ -49,21 +82,21 @@ async function bind(req, res, currentSession) {
                 "V": "20"
             },
             "estServiceEnGroupe": true,
-            "moyClasse": { // TODO
+            "moyClasse": {
                 "_T": 10,
-                "V": "??"
+                "V": average(subjectNotes.map(item => item.classAverage))
             },
-            "moyEleve": { // TODO
+            "moyEleve": {
                 "_T": 10,
-                "V": "??"
+                "V": average(subjectNotes.map(item => item.grade))
             },
-            "moyMax": { // TODO
+            "moyMax": {
                 "_T": 10,
-                "V": "??"
+                "V": extremum(subjectNotes.map(item => item.max), Math.max)
             },
-            "moyMin": { // TODO
+            "moyMin": {
                 "_T": 10,
-                "V": "??"
+                "V": extremum(subjectNotes.map(item => item.min), Math.min)
             },
             "ordre": services[grade.subject]
         };
@@ -83,6 +116,19 @@ async function bind(req, res, currentSession) {
         "bareme": {
             "_T": 10,
             "V": grade.outof
+        },
+        // Resultats de la CLASSE sur ce devoir, tels que PRONOTE les nomme.
+        "moyenne": {
+            "_T": 10,
+            "V": publishedOrPlaceholder(grade.classAverage)
+        },
+        "noteMin": {
+            "_T": 10,
+            "V": publishedOrPlaceholder(grade.min)
+        },
+        "noteMax": {
+            "_T": 10,
+            "V": publishedOrPlaceholder(grade.max)
         },
         "baremeParDefaut": {
             "_T": 10,

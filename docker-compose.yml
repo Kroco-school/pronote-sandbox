@@ -11,6 +11,18 @@ services:
     volumes:
       - pronote-sandbox-data:/data
     restart: unless-stopped
+    # Le backend Kroco valide l'URL Pronote (anti-SSRF) : il refuse les IP privées,
+    # « localhost » et les suffixes internes (.internal, .local…). On rejoint donc le
+    # réseau de Kroco pour être joignable sous un simple nom de conteneur, qui passe
+    # le garde-fou sans l'affaiblir : http://kroco-pronote-sandbox:3000/fossnote/eleve.html
+    networks:
+      - default
+      - kroco
 
 volumes:
   pronote-sandbox-data:
+
+networks:
+  kroco:
+    external: true
+    name: krocoapp_default

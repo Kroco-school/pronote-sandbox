@@ -20,7 +20,20 @@ const funcStudentHomepage = require('./fonctions/eleve/homepage');
 const funcStudentGrades = require('./fonctions/eleve/lastgrades');
 const funcStudentInfos = require('./fonctions/eleve/persopage');
 const funcStudentHomeworks = require('./fonctions/eleve/homeworks');
+const funcStudentCourseContents = require('./fonctions/eleve/coursecontents');
 const funcStudentTimetable = require('./fonctions/eleve/timetable');
+
+// `PageCahierDeTexte` sert deux choses selon l'onglet demande : 88 le travail A FAIRE
+// (`ListeTravauxAFaire`), 89 ce que le professeur a ecrit APRES la seance
+// (`ListeCahierDeTextes`). Repondre la premiere liste a une demande de la seconde donnerait
+// un client silencieusement vide, sans erreur : d'ou l'aiguillage explicite ci-dessous.
+const ONGLET_CONTENU_DE_COURS = 89;
+
+function requestedOnglet(req) {
+    const signature = req.body.donneesSec && req.body.donneesSec._Signature_;
+    const onglet = signature && signature.onglet;
+    return typeof onglet === 'number' ? onglet : parseInt(onglet, 10);
+}
 
 const funcTeacherSettings = require('./fonctions/prof/settings');
 const funcTeacherHomepage = require('./fonctions/prof/homepage');
@@ -127,7 +140,12 @@ router.post('/:espace_id/:session_id/:numero_ordre', async (req, res) => {
             }
         } else if (nom === "PageCahierDeTexte") {
             if(espace_id === "3") {
-                await funcStudentHomeworks.bind(req, res, currentSession);
+                if (requestedOnglet(req) === ONGLET_CONTENU_DE_COURS) {
+                    await funcStudentCourseContents.bind(req, res, currentSession);
+                } else {
+                    // Onglet 88, ou onglet absent : l'ancien comportement, le travail a faire.
+                    await funcStudentHomeworks.bind(req, res, currentSession);
+                }
             }
         } else if (nom === "PageEmploiDuTemps") {
             if(espace_id === "3") {

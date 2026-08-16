@@ -90,6 +90,9 @@ function addWeeks(date, weeks) {
     return addDays(date, weeks * 7);
 }
 
+// Profondeur de passe simulee, alignee sur la fenetre que Kroco relit (4 semaines).
+const PAST_WEEKS = 4;
+
 async function ensureSchema() {
     await run(`CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,7 +198,28 @@ async function ensureSchema() {
         isTest INTEGER NOT NULL DEFAULT 0
     )`);
 
+    // Cahier de textes : ce que le professeur ecrit APRES la seance. Distinct de
+    // `homeworks`, qui est le travail A FAIRE. PRONOTE sert les deux par la meme fonction,
+    // onglet 88 pour les devoirs et 89 pour ces contenus.
+    await run(`CREATE TABLE IF NOT EXISTS course_contents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        className TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        teacherLabel TEXT NOT NULL,
+        date TEXT NOT NULL,
+        place INTEGER NOT NULL DEFAULT 0,
+        slot INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        attachments TEXT
+    )`);
+
     await ensureColumn('courses', 'isTest', 'INTEGER NOT NULL DEFAULT 0');
+    // Pieces jointes d'un devoir, en JSON : [{ "name": "...", "path": "/pj/..." }].
+    // On stocke un chemin relatif et non une URL absolue : l'hote depend de la facon dont
+    // le client a joint le bac a sable (conteneur, localhost, IP du Mac), et seule la
+    // requete entrante le connait.
+    await ensureColumn('homeworks', 'attachments', 'TEXT');
 }
 
 async function seedReferenceData(today) {
@@ -203,12 +227,39 @@ async function seedReferenceData(today) {
     await run(`DELETE FROM classes`);
     await run(`DELETE FROM subjects`);
 
+    // `classAverage`, `min` et `max` sont ce que l'etablissement publie sur la CLASSE pour
+    // cette note : PRONOTE les rend sous `moyenne`, `noteMin` et `noteMax`. La derniere note
+    // les laisse vides volontairement, pour couvrir le cas « non publie » cote client.
+    // Un trimestre entier de notes, pas seulement les dernieres : c'est ce qui permet de
+    // voir la page Notes telle qu'un vrai eleve la rencontre — assez longue pour meriter
+    // d'etre repliee. Les valeurs couvrent volontairement les cas limites: coefficients
+    // varies, note sur 10 ou sur 40, comparaisons de classe absentes, bonus et facultative.
     const notes = [
-        { id: 1, subject: 'MATHEMATIQUES', grade: '16', outof: '20', date: formatDate(addDays(today, -16)), commentary: 'Calcul litteral', coef: '1' },
-        { id: 2, subject: 'FRANCAIS', grade: '14', outof: '20', date: formatDate(addDays(today, -13)), commentary: 'Dictee et grammaire', coef: '1' },
-        { id: 3, subject: 'SVT', grade: '17', outof: '20', date: formatDate(addDays(today, -10)), commentary: 'Respiration cellulaire', coef: '1' },
-        { id: 4, subject: 'HIST.GEO', grade: '13', outof: '20', date: formatDate(addDays(today, -7)), commentary: 'Reperes chronologiques', coef: '1' },
-        { id: 5, subject: 'ANGLAIS LV1', grade: '15', outof: '20', date: formatDate(addDays(today, -4)), commentary: 'Comprehension orale', coef: '1' }
+        { id: 1, subject: 'MATHEMATIQUES', grade: '16', outof: '20', date: formatDate(addDays(today, -74)), commentary: 'Calcul litteral', coef: '1', classAverage: '11.82', min: '4.5', max: '18.5' },
+        { id: 2, subject: 'FRANCAIS', grade: '12', outof: '20', date: formatDate(addDays(today, -71)), commentary: 'Redaction: le portrait', coef: '2', classAverage: '11.1', min: '5', max: '17' },
+        { id: 3, subject: 'ANGLAIS LV1', grade: '15.5', outof: '20', date: formatDate(addDays(today, -68)), commentary: 'Test de vocabulaire', coef: '1', classAverage: '13.2', min: '7', max: '19' },
+        { id: 4, subject: 'SVT', grade: '8', outof: '10', date: formatDate(addDays(today, -65)), commentary: 'Interro sur la cellule', coef: '0.5', classAverage: '6.4', min: '2', max: '10' },
+        { id: 5, subject: 'HIST.GEO', grade: '13', outof: '20', date: formatDate(addDays(today, -61)), commentary: 'Reperes chronologiques', coef: '1', classAverage: '10.9', min: '3', max: '16' },
+        { id: 6, subject: 'SC. PHYS', grade: '14', outof: '20', date: formatDate(addDays(today, -58)), commentary: 'Les etats de la matiere', coef: '1', classAverage: '12.05', min: '6', max: '18' },
+        { id: 7, subject: 'MATHEMATIQUES', grade: '9.5', outof: '20', date: formatDate(addDays(today, -54)), commentary: 'Controle: proportionnalite', coef: '3', classAverage: '10.4', min: '2', max: '18' },
+        { id: 8, subject: 'ESPAGNOL LV2', grade: '17', outof: '20', date: formatDate(addDays(today, -51)), commentary: 'Presentacion oral', coef: '1', classAverage: '14.3', min: '9', max: '19.5' },
+        { id: 9, subject: 'FRANCAIS', grade: '11', outof: '20', date: formatDate(addDays(today, -47)), commentary: 'Dictee et grammaire', coef: '1', classAverage: '12.4', min: '6', max: '17' },
+        { id: 10, subject: 'EPS', grade: '18', outof: '20', date: formatDate(addDays(today, -44)), commentary: 'Demi-fond', coef: '1', classAverage: '14.8', min: '8', max: '20' },
+        { id: 11, subject: 'SVT', grade: '17', outof: '20', date: formatDate(addDays(today, -40)), commentary: 'Respiration cellulaire', coef: '2', classAverage: '13.75', min: '8', max: '19.5' },
+        { id: 12, subject: 'TECHNO', grade: '15', outof: '20', date: formatDate(addDays(today, -37)), commentary: 'Fiche projet', coef: '1', classAverage: '13.9', min: '9', max: '18' },
+        { id: 13, subject: 'MATHEMATIQUES', grade: '13.5', outof: '20', date: formatDate(addDays(today, -33)), commentary: 'Fractions', coef: '1', classAverage: '11.6', min: '3.5', max: '19' },
+        { id: 14, subject: 'HIST.GEO', grade: '9', outof: '20', date: formatDate(addDays(today, -30)), commentary: 'La societe feodale', coef: '2', classAverage: '11.3', min: '4', max: '17.5' },
+        { id: 15, subject: 'ANGLAIS LV1', grade: '16', outof: '20', date: formatDate(addDays(today, -26)), commentary: 'Comprehension ecrite', coef: '1', classAverage: '12.9', min: '5', max: '19' },
+        { id: 16, subject: 'ARTS PLASTIQUES', grade: '19', outof: '20', date: formatDate(addDays(today, -23)), commentary: 'Projet couleur', coef: '1', classAverage: '15.2', min: '10', max: '20' },
+        { id: 17, subject: 'SC. PHYS', grade: '11.5', outof: '20', date: formatDate(addDays(today, -19)), commentary: 'Circuits electriques', coef: '2', classAverage: '11.9', min: '4', max: '18' },
+        { id: 18, subject: 'FRANCAIS', grade: '14', outof: '20', date: formatDate(addDays(today, -16)), commentary: 'Lecture analytique', coef: '2', classAverage: '12.1', min: '6.5', max: '18' },
+        { id: 19, subject: 'ED MUSICALE', grade: '2', outof: '20', date: formatDate(addDays(today, -14)), commentary: 'Participation (bonus)', coef: '1', classAverage: '', min: '', max: '' },
+        { id: 20, subject: 'ESPAGNOL LV2', grade: '13', outof: '20', date: formatDate(addDays(today, -12)), commentary: 'Los verbos del presente', coef: '1', classAverage: '12.7', min: '6', max: '18' },
+        { id: 21, subject: 'MATHEMATIQUES', grade: '35', outof: '40', date: formatDate(addDays(today, -9)), commentary: 'Devoir commun', coef: '4', classAverage: '24.5', min: '9', max: '38' },
+        { id: 22, subject: 'SVT', grade: '15', outof: '20', date: formatDate(addDays(today, -7)), commentary: 'Les besoins des organes', coef: '1', classAverage: '13.1', min: '7', max: '19' },
+        { id: 23, subject: 'HIST.GEO', grade: '14.5', outof: '20', date: formatDate(addDays(today, -5)), commentary: "L'essor du commerce", coef: '1', classAverage: '11.8', min: '5', max: '18' },
+        { id: 24, subject: 'ANGLAIS LV1', grade: '15', outof: '20', date: formatDate(addDays(today, -3)), commentary: 'Comprehension orale', coef: '1', classAverage: '', min: '', max: '' },
+        { id: 25, subject: 'LATIN', grade: '16', outof: '20', date: formatDate(addDays(today, -1)), commentary: 'Version (facultative)', coef: '1', classAverage: '13.4', min: '8', max: '18' }
     ];
 
     await run(
@@ -325,7 +376,9 @@ async function seedReferenceData(today) {
 
 async function seedHomeworks(today) {
     const homeworks = [
-        ['MATHEMATIQUES', 'Exercices de fractions', 'Exercices 24 a 31 page 87. Rediger les calculs et simplifier les resultats.', 'Pythagore', '5A', '', 'akaty', today, addDays(today, 2), '#004B87', 0],
+        ['MATHEMATIQUES', 'Exercices de fractions', 'Exercices 24 a 31 page 87. Rediger les calculs et simplifier les resultats.', 'Pythagore', '5A', '', 'akaty', today, addDays(today, 2), '#004B87', 0, [
+            { name: 'Fiche exercices fractions.pdf', path: '/pj/fiche-exercices-fractions.pdf' }
+        ]],
         ['FRANCAIS', 'Lecture analytique', 'Lire le texte distribue et repondre aux questions 1 a 6 sur le cahier.', 'Le Clezio J.', '5A', '', 'akaty', today, addDays(today, 3), '#C00000', 0],
         ['SC. PHYS', 'Exercices circuits electriques', 'Faire les exercices 3, 4 et 7 sur les dipoles et revoir le vocabulaire.', 'Einstein A.', '5A', '', 'akaty', today, addDays(today, 4), '#0C88B8', 0],
         ['HIST.GEO', 'Controle de reperes', 'Controle: apprendre la fiche sur les reperes historiques et savoir refaire la frise.', 'Tocqueville A.', '5A', '', 'akaty', today, addDays(today, 5), '#7A3A3A', 0],
@@ -342,8 +395,8 @@ async function seedHomeworks(today) {
 
     for (const homework of homeworks) {
         await run(
-            `INSERT INTO homeworks (subject, title, description, teachers, classes, groupes, students, date, endDate, hexColor, locked)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO homeworks (subject, title, description, teachers, classes, groupes, students, date, endDate, hexColor, locked, attachments)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 homework[0],
                 homework[1],
@@ -355,7 +408,111 @@ async function seedHomeworks(today) {
                 formatDate(homework[7]),
                 formatDate(homework[8]),
                 homework[9],
-                homework[10]
+                homework[10],
+                homework[11] ? JSON.stringify(homework[11]) : null
+            ]
+        );
+    }
+}
+
+/**
+ * Cahier de textes des quatre dernieres semaines : la fenetre exacte que Kroco lit.
+ *
+ * Le jeu de donnees est volontairement inegal, comme un vrai cahier de textes :
+ * - certains professeurs le remplissent a chaque seance, d'autres jamais (EPS, ARTS
+ *   PLASTIQUES et TECHNO n'apparaissent pas du tout) ;
+ * - une seance porte deux blocs (« cours » puis « exercices »), pour verifier qu'ils
+ *   restent separes plutot que recolles ;
+ * - deux entrees portent une piece jointe, une autre du texte long, une autre du HTML
+ *   enrichi (gras, liste) qui doit arriver aplati en texte cote client.
+ *
+ * `weekOffset` compte a rebours depuis la semaine en cours : 0 = cette semaine, 3 = il y a
+ * trois semaines. Les dates sont donc toujours fraiches, quel que soit le jour du seed.
+ */
+async function seedCourseContents(today) {
+    const monday = mondayOfWeek(today);
+
+    // Chaque entree se pose sur un creneau REEL de l'emploi du temps (`weeklyCourses` plus
+    // bas) : meme jour, meme place, meme matiere. C'est ce qui permet a la jointure de
+    // retrouver la seance et de rendre le `cours.V.N` qu'un vrai PRONOTE porte.
+    // [weekOffset, weekday, place, slot, matiere, professeur, titre, description, pieces jointes]
+    const contents = [
+        // Semaine en cours.
+        [0, 0, 0, 0, 'SVT', 'PASTEUR L.', 'La respiration cellulaire',
+            'Correction du schema du poumon.\nDefinition : la respiration cellulaire libere l\'energie des nutriments grace au dioxygene.\nNous avons vu l\'equation bilan et le role des mitochondries.'],
+        [0, 0, 3, 0, 'MATHEMATIQUES', 'PYTHAGORE', 'Fractions : addition et soustraction',
+            'Rappel de la mise au meme denominateur, puis trois exemples corriges au tableau. La fiche distribuee reprend la methode etape par etape.',
+            [{ name: 'Fiche exercices fractions.pdf', path: '/pj/fiche-exercices-fractions.pdf' }]],
+        [0, 1, 1, 0, 'HIST.GEO', 'TOCQUEVILLE A.', 'Chapitre 4 : l\'essor du commerce',
+            '<p>Etude de deux documents sur les foires de Champagne.</p><ul><li>Les routes marchandes</li><li>Le role des banquiers italiens</li></ul><p>A retenir : <b>l\'essor urbain</b> accompagne le developpement du commerce.</p>'],
+        [0, 1, 2, 0, 'SC. PHYS', 'EINSTEIN A.', 'Les circuits electriques',
+            'Vocabulaire : dipole, generateur, recepteur, circuit ouvert et ferme. Realisation d\'un circuit serie puis d\'un circuit derivation au laboratoire.'],
+        [0, 2, 0, 0, 'FRANCAIS', 'LE CLEZIO J.', 'Lecture analytique : l\'incipit',
+            'Lecture a voix haute puis reperage du narrateur et du point de vue. Nous avons releve le champ lexical de la peur et commence le tableau d\'analyse.'],
+        [0, 3, 2, 0, 'ANGLAIS LV1', 'SHAKESPEARE W.', 'Unit 4 : talking about the future',
+            'Difference entre « will », « be going to » et le present continu. Ecoute d\'un dialogue puis production orale par deux.'],
+
+        // Semaine derniere. La seance de maths du jeudi porte DEUX blocs : le professeur
+        // separe son cours de ses exercices, comme dans un vrai cahier de textes.
+        [1, 0, 0, 0, 'SVT', 'PASTEUR L.', 'Les besoins des organes',
+            'TP : mesure du rythme cardiaque avant et apres effort. Conclusion : les besoins en dioxygene et en glucose augmentent pendant l\'effort.'],
+        [1, 3, 1, 0, 'MATHEMATIQUES', 'PYTHAGORE', 'Cours : la proportionnalite',
+            'Definition d\'un tableau de proportionnalite et du coefficient. Trois proprietes demontrees : linearite additive, multiplicative, et passage par l\'unite.'],
+        [1, 3, 1, 1, 'MATHEMATIQUES', 'PYTHAGORE', 'Exercices d\'application',
+            'Exercices 12, 14 et 18 page 74, corriges en classe. L\'exercice 18 (echelles d\'une carte) sera redemande au controle.'],
+        [1, 2, 0, 0, 'FRANCAIS', 'LE CLEZIO J.', 'Conjugaison : l\'imparfait',
+            'Formation de l\'imparfait et valeurs d\'emploi (description, habitude, arriere-plan). Attention aux verbes en -ier et -yer.'],
+        [1, 4, 4, 0, 'ANGLAIS LV1', 'SHAKESPEARE W.', 'Unit 4 : listening',
+            'Comprehension orale sur les projets de vacances, puis correction collective du questionnaire.'],
+        [1, 3, 5, 0, 'ESPAGNOL LV2', 'GARCIA LORCA F. [5AP.1]', 'Los verbos del presente',
+            'Conjugaison des verbes reguliers en -ar, -er et -ir. Exercices oraux puis ecrits sur le cahier.'],
+
+        // Il y a deux semaines.
+        [2, 1, 1, 0, 'HIST.GEO', 'TOCQUEVILLE A.', 'Reperes chronologiques du Moyen Age',
+            'Construction de la frise collective au tableau, des invasions au XVe siecle. La frise est a recopier et a apprendre : elle servira au controle.',
+            [{ name: 'Frise Moyen Age.pdf', path: '/pj/frise-moyen-age.pdf' }]],
+        [2, 0, 0, 0, 'SVT', 'PASTEUR L.', 'Correction du controle',
+            'Reprise des questions 3 et 5, qui ont pose probleme. La moyenne de la classe est de 13,75.'],
+        [2, 2, 1, 0, 'MATHEMATIQUES', 'PYTHAGORE', 'Pourcentages',
+            'Appliquer, calculer et comparer un pourcentage. Exercices sur les soldes et les augmentations. Methode : passer par le coefficient multiplicateur.'],
+        [2, 1, 0, 0, 'TECHNO', 'JOBS S.', 'Fonction d\'usage et fonction technique',
+            'Distinction entre ce a quoi sert un objet et la maniere dont il le fait. Etude de trois objets du quotidien, fiche a completer.'],
+
+        // Il y a trois semaines.
+        [3, 3, 0, 0, 'FRANCAIS', 'LE CLEZIO J.', 'Le schema narratif',
+            'Les cinq etapes du recit, illustrees par le conte etudie en debut d\'annee. Chaque groupe a presente son etape a la classe.'],
+        [3, 0, 1, 0, 'HIST.GEO', 'TOCQUEVILLE A.', 'La societe feodale',
+            'Seigneurs, vassaux et paysans : la ceremonie de l\'hommage et le fonctionnement de la seigneurie. Etude d\'une enluminure.'],
+        [3, 4, 4, 0, 'ANGLAIS LV1', 'SHAKESPEARE W.', 'Vocabulary : daily routines',
+            'Liste de vocabulaire distribuee et repetee. Jeu de role sur la journee type. A revoir avant l\'interrogation.'],
+        [3, 0, 5, 0, 'EPI Rome antique', 'CICERON', 'Presentation du projet',
+            'Constitution des groupes et choix des sujets. Chaque groupe rendra une affiche et un oral de cinq minutes.']
+    ];
+
+    await run(`DELETE FROM course_contents`);
+
+    for (const content of contents) {
+        const [weekOffset, weekday, place, slot, subject, teacher, title, description, attachments] = content;
+        const date = addDays(addWeeks(monday, -weekOffset), weekday);
+        // Un cahier de textes ne parle jamais d'une seance qui n'a pas eu lieu : les
+        // creneaux encore a venir de la semaine en cours sont ecartes. Le jeu de donnees
+        // change donc selon le jour du seed, exactement comme dans un vrai etablissement.
+        if (date > today) {
+            continue;
+        }
+        await run(
+            `INSERT INTO course_contents (className, subject, teacherLabel, date, place, slot, title, description, attachments)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                '5A',
+                subject,
+                teacher,
+                formatDate(date),
+                place,
+                slot,
+                title,
+                description,
+                attachments ? JSON.stringify(attachments) : null
             ]
         );
     }
@@ -431,7 +588,10 @@ async function seedAgendaAndCourses(today) {
         '3|4|ANGLAIS LV1'
     ]);
 
-    for (let week = 0; week < 52; week++) {
+    // On remonte quatre semaines avant la semaine courante. Un vrai PRONOTE a un emploi du
+    // temps derriere lui, et sans ces semaines passees le cahier de textes n'aurait aucune
+    // seance a laquelle se rattacher — c'est precisement la fenetre que Kroco relit.
+    for (let week = -PAST_WEEKS; week < 52; week++) {
         const monday = addWeeks(firstMonday, week);
         for (const course of weeklyCourses) {
             const [weekday, place, duration, subject, teacherUsername, teacherLabel, room, color] = course;
@@ -465,6 +625,7 @@ async function main() {
     await run(`DELETE FROM evaluations`).catch(() => {});
     await seedReferenceData(today);
     await seedHomeworks(today);
+    await seedCourseContents(today);
     await seedAgendaAndCourses(today);
     console.log('Pronote sandbox seeded for Kroco tests.');
 }

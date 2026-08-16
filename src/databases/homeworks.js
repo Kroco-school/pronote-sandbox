@@ -21,7 +21,8 @@ db.serialize(() => {
     date TEXT,
     endDate TEXT,
     hexColor TEXT,
-    locked INTEGER
+    locked INTEGER,
+    attachments TEXT
   )`;
     db.run(table, (err) => {
         if (err) {
@@ -100,7 +101,8 @@ function getHomeworksByClass(className, callback) {
                     date: row.date,
                     endDate: row.endDate,
                     hexColor: row.hexColor,
-                    locked: row.locked
+                    locked: row.locked,
+                    attachments: row.attachments
                 };
             });
             callback(null, homeworks);
@@ -162,7 +164,8 @@ function getHomeworksByGroup(groupName, callback) {
                     date: row.date,
                     endDate: row.endDate,
                     hexColor: row.hexColor,
-                    locked: row.locked
+                    locked: row.locked,
+                    attachments: row.attachments
                 };
             });
             callback(null, homeworks);
@@ -192,7 +195,8 @@ function getHomeworksByStudent(studentName, callback) {
                     date: row.date,
                     endDate: row.endDate,
                     hexColor: row.hexColor,
-                    locked: row.locked
+                    locked: row.locked,
+                    attachments: row.attachments
                 };
             });
             callback(null, homeworks);
